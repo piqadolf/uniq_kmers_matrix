@@ -116,11 +116,12 @@ def make_matrix(group_item):
     n = 0
     len_clusters = len(cluster_seq_dict)
     print('cluster_seq_dict len', len(cluster_seq_dict))
+    # print('len cluster_names', len(cluster_names))
     for cl in clusters_names: # поменять словарь откуда кластеры брать на тот, который соответствует порядку кластеров в таблице
         cluster_kmers_amount_dict = dd(int)
         seqs_in_cluster_list = []
         n+=1
-        if n%20==0:
+        if n%50==0:
             print(f'{n} of {len_clusters}')
         cluster_names.append(cl)
         for i in cluster_seq_dict[cl]:
@@ -167,28 +168,43 @@ def make_matrix(group_item):
     # cluster_names = {v:i for i,v in enumerate(cluster_names)} # для итерации по строкам массива
     return(features, feature_name, clusters_names, sum_arr, clusters_sizes)
 
-def count_uniq(tree, matrix, feature_names, clusters_names, sum_arr, clusters_sizes):
+def make_csv(candidate_kmers, specificity_arr, sensitivity_arr, absolute_counts, cluster_name):
+    quality_arr = specificity_arr*sensitivity_arr
+    df_out = pd.DataFrame({'kmer':candidate_kmers, 'specificity':specificity_arr, 'sensitivity':sensitivity_arr,
+                           'quality':quality_arr, 'absolute_counts':absolute_counts})
+    df_out.to_csv(f'./out_csv/{cluster_name}.csv', index=False)
+
+def count_uniq(tree, matrix, feature_name, clusters_names, sum_arr, clusters_sizes):
     for k,v in tree.items():
         get_leaves(v)
+        print('len leaves', len(leaves))
         temp_matrix = matrix[leaves]
         clade_sum_arr = np.sum(temp_matrix, axis=0)
         current_clade_size = sum([clusters_sizes[clusters_names[i]] for i in leaves])
         # print('leaves', leaves)
-        columns_to_del = np.where(clade_sum_arr < int(0.5*current_clade_size))[0] # фильтрация 60% топовых по чувствительности кмеров
-        print('размер клады и threshold',current_clade_size, int(0.5*current_clade_size))
+        columns_to_del = np.where(clade_sum_arr < int(0.3*current_clade_size))[0] # фильтрация 60% топовых по чувствительности кмеров
+        print('размер клады и threshold',current_clade_size, int(0.3*current_clade_size))
         # удаляем новые отфильтрованные столбцы
         clade_sum_arr = np.delete(clade_sum_arr, columns_to_del)
         temp_sum_arr = np.delete(sum_arr, columns_to_del)
         temp_matrix = np.delete(temp_matrix, columns_to_del, axis=1)
+        temp_feature_name = np.delete(feature_name, columns_to_del)
 
         division_sign = clade_sum_arr/temp_sum_arr
-        div_sign_desc = np.argsort(-division_sign)[:100]
+        div_sign_desc = np.argsort(-division_sign)[:200]
 
 
         # print(div_sign_desc)
-        print(division_sign[div_sign_desc.tolist()]) # отбор значений чувствительности топовых по чувствительности кмеров
-        print(clade_sum_arr[div_sign_desc.tolist()])
-        print(temp_sum_arr[div_sign_desc.tolist()]) # абсолютные значения суммы данных кмеров во всем датасете
+        candidate_kmers = (temp_feature_name[div_sign_desc.tolist()])
+        print(candidate_kmers)
+        specificity_arr = (division_sign[div_sign_desc.tolist()])
+        print(specificity_arr) # отбор значений чувствительности топовых по чувствительности кмеров
+        sensitivity_arr = (clade_sum_arr[div_sign_desc.tolist()]/current_clade_size)
+        print(sensitivity_arr)
+        absolute_counts = (temp_sum_arr[div_sign_desc.tolist()])
+        print(absolute_counts) # абсолютные значения суммы данных кмеров во всем датасете
+
+        make_csv(candidate_kmers, specificity_arr, sensitivity_arr, absolute_counts, k)
         o = input()
 
 grp = make_groups(df, diff_column-1)
