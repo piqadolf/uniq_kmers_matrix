@@ -8,8 +8,10 @@ import numpy as np
 import json
 
 
-clusters_df = pd.read_csv('mmseqs_REPEAT_REGIONS_1_cluster_FILTERED.tsv', sep = '\t', names=['0','1'])
+local_kmers_of_choice = []
+global_kmers_of_choice = []
 
+clusters_df = pd.read_csv('mmseqs_REPEAT_REGIONS_1_cluster_FILTERED.tsv', sep = '\t', names=['0','1'])
 sequences = open('Alongiglumis_CN58138_pseudomolecules.v1.fasta.pass.list.REPEAT_REGIONS.gff3.fas')
 seq_dict = {}
 n = 0
@@ -196,16 +198,62 @@ def count_uniq(tree, matrix, feature_name, clusters_names, sum_arr, clusters_siz
 
         # print(div_sign_desc)
         candidate_kmers = (temp_feature_name[div_sign_desc.tolist()])
-        print(candidate_kmers)
+        # print(candidate_kmers)
         specificity_arr = (division_sign[div_sign_desc.tolist()])
         print(specificity_arr) # отбор значений чувствительности топовых по чувствительности кмеров
         sensitivity_arr = (clade_sum_arr[div_sign_desc.tolist()]/current_clade_size)
         print(sensitivity_arr)
         absolute_counts = (temp_sum_arr[div_sign_desc.tolist()])
         print(absolute_counts) # абсолютные значения суммы данных кмеров во всем датасете
-
+        local_counts = (clade_sum_arr[div_sign_desc.tolist()])
+        sorted_temp_matrix = temp_matrix[:, div_sign_desc.tolist()]
+        print(temp_matrix.shape)
+        print(sorted_temp_matrix.shape)
+        candidate_kmers_sens_sort_order = np.argsort(-sensitivity_arr)
+        sorted_candidate_kmers = (candidate_kmers[candidate_kmers_sens_sort_order])
+        sorted_temp_matrix = sorted_temp_matrix[:, candidate_kmers_sens_sort_order.tolist()]
+        o = input()
         make_csv(candidate_kmers, specificity_arr, sensitivity_arr, absolute_counts, k)
         o = input()
+
+def greedy_selection(sorted_temp_matrix, clusters_names, clusters_sizes, leaves,
+                     sorted_candidate_kmers, prev_covered_clusters, local_kmers_of_choice,
+                     depth=1):
+    kmer_occur = -1
+    thresh = 0.8
+
+    kmer_of_choice = None
+    max_coverage = 0
+    max_covered_clusters = []
+    for i in sorted_candidate_kmers:
+        coverage = 0
+        covered_clusters = []
+        kmer_occur+=1
+        if i in local_kmers_of_choice:
+            continue
+        cluster_occur = -1
+        for cluster in leaves:
+            cluster_occur+=1
+            if cluster in prev_covered_clusters:
+                continue
+            if sorted_temp_matrix[cluster_occur][kmer_occur]/clusters_sizes[clusters_names[cluster]] >= thresh:
+                coverage+=1
+                covered_clusters.append(cluster)
+        if coverage > max_coverage:
+            max_coverage = coverage
+            kmer_of_choice = i
+            max_covered_clusters = covered_clusters
+    local_kmers_of_choice.append(kmer_of_choice)
+    if len(prev_covered_clusters)+max_coverage==len(leaves) or depth == 10:
+        prev_covered_clusters = prev_covered_clusters.extend(max_covered_clusters)
+        return(prev_covered_clusters, local_kmers_of_choice)
+    depth+=1
+    prev_covered_clusters, local_kmers_of_choice = greedy_selection(sorted_temp_matrix, clusters_names, clusters_sizes, leaves,
+                                                                    sorted_candidate_kmers, prev_covered_clusters, local_kmers_of_choice, depth) 
+
+
+
+
 
 grp = make_groups(df, diff_column-1)
 tree = make_tree(df, grp, diff_column)
